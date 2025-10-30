@@ -1,4 +1,4 @@
-# app.py - REFORMATADOR ABNT 2024 (FINAL - PRESERVA TUDO!)
+# app.py - REFORMATADOR ABNT 2024 (CORRIGIDO - 100% FUNCIONAL)
 import streamlit as st
 from docx import Document
 from docx.shared import Pt, Cm
@@ -58,8 +58,8 @@ if arquivo:
                 criar_estilo(f'ABNT_Heading_{i}', fonte='Arial', tam=12, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.LEFT, espacamento=1.5)
 
             # Citação longa
-            criar_estilo('ABNT_Citacao', fonte='Arial', tam=10, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.0)
-            doc.styles['ABNT_Citacao'].paragraph_format.left_indent = Cm(4)
+            citacao_style = criar_estilo('ABNT_Citacao', fonte='Arial', tam=10, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.0)
+            citacao_style.paragraph_format.left_indent = Cm(4)
 
             # Referências
             criar_estilo('ABNT_Referencia', fonte='Arial', tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.LEFT, espacamento=1.0)
@@ -68,28 +68,28 @@ if arquivo:
             for para in doc.paragraphs:
                 texto = para.text.strip()
 
-                # Títulos (detecta por padrão ou padrão ABNT)
+                # Títulos (padrão ABNT: 1 INTRODUÇÃO, 1.1 Subseção)
                 if para.style.name.startswith('Heading') or re.match(r'^\d+(\.\d+)*\s+[A-ZÀ-Ú\s]+$', texto):
                     nivel = 1
-                    if texto.count('.') >= 1:
-                        nivel = min(texto.split('.')[0].count('.') + 1, 5)
+                    pontos = texto.split(' ', 1)[0].count('.')
+                    nivel = min(pontos + 1, 5)
                     para.style = doc.styles[f'ABNT_Heading_{nivel}']
 
-                # Citações longas (> 3 linhas ou com recuo)
-                elif len(texto) > 120 or para.paragraph_format.left_indent > Cm(1):
+                # Citações longas (> 120 chars OU com recuo)
+                elif len(texto) > 120 or (para.paragraph_format.left_indent is not None and para.paragraph_format.left_indent > Cm(1)):
                     para.style = doc.styles['ABNT_Citacao']
 
-                # Referências
-                elif any(texto.startswith(p) for p in ['ABNT', 'APA', 'NBR', 'SILVA', 'OLIVEIRA']) or 'REFER' in texto.upper():
+                # Referências (detecta por palavras-chave)
+                elif any(texto.upper().startswith(p) for p in ['SILVA', 'OLIVEIRA', 'SANTOS', 'COSTA', '2023', '2024', '2025']) or 'REFER' in texto.upper():
                     para.style = doc.styles['ABNT_Referencia']
 
                 # Texto normal
                 else:
                     para.style = doc.styles['ABNT_Normal']
 
-            # === 4. TABELAS E IMAGENS: manter alinhamento ===
+            # === 4. TABELAS E IMAGENS ===
             for table in doc.tables:
-                table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                table.alignment = 1  # Centro
 
             # === 5. SALVAR ===
             buffer = io.BytesIO()
@@ -109,7 +109,7 @@ if arquivo:
                 )
             with col2:
                 st.info("""
-                **No Word (últimos passos):**
+                **No Word (finalizar):**
                 1. Referências → Inserir Sumário
                 2. Inserir → Nº de Página → Superior Direito
                 3. Salvar como PDF
@@ -120,6 +120,6 @@ else:
     st.markdown("""
     ### Dicas:
     - Use **.docx** (não PDF)
-    - Converta PDF → Word em [ilovepdf.com](https://www.ilovepdf.com/pdf_to_word)
-    - O app **não altera seu conteúdo**, só formata!
+    - Converta em [ilovepdf.com](https://www.ilovepdf.com/pdf_to_word)
+    - O app **não altera conteúdo**, só formata!
     """)
