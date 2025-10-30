@@ -1,3 +1,2 @@
 streamlit
 python-docx
-pymupdf  # Para PDFs
