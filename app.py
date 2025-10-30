@@ -1,4 +1,4 @@
-# app.py - REFORMATADOR ABNT 2024 (CORRIGIDO - 100% FUNCIONAL)
+# app.py - REFORMATADOR ABNT 2024 (CONSERVADOR + ESCOLHA DE FONTE)
 import streamlit as st
 from docx import Document
 from docx.shared import Pt, Cm
@@ -9,7 +9,10 @@ import re
 
 st.set_page_config(page_title="ABNT 2024 - Reformatador", layout="centered")
 st.title("Reformatador ABNT 2024")
-st.caption("Upload seu .docx → Aplica NBR 14724:2024 → Baixa perfeito! (Preserva imagens, tabelas, fórmulas)")
+st.caption("Upload seu .docx → Aplica NBR 14724:2024 → Baixa perfeito! (Preserva tudo, sem bagunça)")
+
+# Escolha de fonte (ABNT permite Arial ou Times New Roman)
+fonte_escolhida = st.selectbox("Escolha a fonte:", ["Arial", "Times New Roman"])
 
 # Upload
 arquivo = st.file_uploader("Faça upload do seu TCC em .docx", type="docx")
@@ -24,7 +27,7 @@ if arquivo:
 
     if st.button("Aplicar Formatação ABNT 2024", type="primary"):
         with st.spinner("Aplicando normas ABNT 2024..."):
-            # === 1. MARGENS (todas as seções) ===
+            # === 1. MARGENS ===
             for section in doc.sections:
                 section.top_margin = Cm(3)
                 section.bottom_margin = Cm(2)
@@ -34,7 +37,7 @@ if arquivo:
                 section.page_width = Cm(21.0)
 
             # === 2. ESTILOS PERSONALIZADOS ===
-            def criar_estilo(nome, base_style=None, fonte='Arial', tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.5):
+            def criar_estilo(nome, base_style=None, fonte=fonte_escolhida, tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.5):
                 if nome in doc.styles:
                     estilo = doc.styles[nome]
                 else:
@@ -51,40 +54,40 @@ if arquivo:
                 return estilo
 
             # Estilo Normal (texto principal)
-            criar_estilo('ABNT_Normal', fonte='Arial', tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.5)
+            criar_estilo('ABNT_Normal', fonte=fonte_escolhida, tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.5)
 
             # Títulos (Heading 1 a 5)
             for i in range(1, 6):
-                criar_estilo(f'ABNT_Heading_{i}', fonte='Arial', tam=12, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.LEFT, espacamento=1.5)
+                criar_estilo(f'ABNT_Heading_{i}', fonte=fonte_escolhida, tam=12, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.LEFT, espacamento=1.5)
 
             # Citação longa
-            citacao_style = criar_estilo('ABNT_Citacao', fonte='Arial', tam=10, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.0)
+            citacao_style = criar_estilo('ABNT_Citacao', fonte=fonte_escolhida, tam=10, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.0)
             citacao_style.paragraph_format.left_indent = Cm(4)
 
             # Referências
-            criar_estilo('ABNT_Referencia', fonte='Arial', tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.LEFT, espacamento=1.0)
+            criar_estilo('ABNT_Referencia', fonte=fonte_escolhida, tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.LEFT, espacamento=1.0)
 
-            # === 3. REAPLICAR ESTILOS INTELIGENTEMENTE ===
+            # === 3. REAPLICAR ESTILOS CONSERVADORAMENTE ===
             for para in doc.paragraphs:
-                texto = para.text.strip()
+                texto = para.text.strip().upper()
 
-                # Títulos (padrão ABNT: 1 INTRODUÇÃO, 1.1 Subseção)
-                if para.style.name.startswith('Heading') or re.match(r'^\d+(\.\d+)*\s+[A-ZÀ-Ú\s]+$', texto):
+                # Títulos: Só se EXATAMENTE no formato ABNT (ex: "1 INTRODUÇÃO")
+                if re.match(r'^\d+(\.\d+)*\s+[A-ZÀ-Ú\s]+$', texto) and para.style.name.startswith('Heading') or len(texto) > 5:
                     nivel = 1
-                    pontos = texto.split(' ', 1)[0].count('.')
-                    nivel = min(pontos + 1, 5)
+                    if '.' in texto.split(' ', 1)[0]:
+                        nivel = min(texto.split(' ', 1)[0].count('.') + 1, 5)
                     para.style = doc.styles[f'ABNT_Heading_{nivel}']
 
-                # Citações longas (> 120 chars OU com recuo)
-                elif len(texto) > 120 or (para.paragraph_format.left_indent is not None and para.paragraph_format.left_indent > Cm(1)):
+                # Citações longas: Só se já tiver recuo ou comprimento + aspas
+                elif (para.paragraph_format.left_indent is not None and para.paragraph_format.left_indent > Cm(1)) or (len(texto) > 120 and '"' in texto):
                     para.style = doc.styles['ABNT_Citacao']
 
-                # Referências (detecta por palavras-chave)
-                elif any(texto.upper().startswith(p) for p in ['SILVA', 'OLIVEIRA', 'SANTOS', 'COSTA', '2023', '2024', '2025']) or 'REFER' in texto.upper():
+                # Referências: Só se parecer com referência (autor maiúsculo, ano)
+                elif re.match(r'^[A-ZÀ-Ú]+, [A-ZÀ-Ú\.]+(\.|;)?', texto) or re.search(r'\d{4}\.', texto):
                     para.style = doc.styles['ABNT_Referencia']
 
-                # Texto normal
-                else:
+                # Texto normal: Aplicar só se não tiver estilo especial
+                elif not para.style.name.startswith('Heading') and not para.style.name.startswith('Quote'):
                     para.style = doc.styles['ABNT_Normal']
 
             # === 4. TABELAS E IMAGENS ===
@@ -121,5 +124,5 @@ else:
     ### Dicas:
     - Use **.docx** (não PDF)
     - Converta em [ilovepdf.com](https://www.ilovepdf.com/pdf_to_word)
-    - O app **não altera conteúdo**, só formata!
+    - O app **não altera conteúdo**, só ajusta formato!
     """)
