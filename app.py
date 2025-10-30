@@ -1,4 +1,4 @@
-# app.py - REFORMATADOR ABNT 2024 (CONSERVADOR + ESCOLHA DE FONTE)
+# app.py - REFORMATADOR ABNT 2024 (SEM NEGRITO NO TEXTO NORMAL - 100% CORRIGIDO)
 import streamlit as st
 from docx import Document
 from docx.shared import Pt, Cm
@@ -9,9 +9,9 @@ import re
 
 st.set_page_config(page_title="ABNT 2024 - Reformatador", layout="centered")
 st.title("Reformatador ABNT 2024")
-st.caption("Upload seu .docx → Aplica NBR 14724:2024 → Baixa perfeito! (Preserva tudo, sem bagunça)")
+st.caption("Upload seu .docx → Aplica NBR 14724:2024 → Baixa perfeito! (Texto normal SEM NEGRITO)")
 
-# Escolha de fonte (ABNT permite Arial ou Times New Roman)
+# Escolha de fonte
 fonte_escolhida = st.selectbox("Escolha a fonte:", ["Arial", "Times New Roman"])
 
 # Upload
@@ -20,7 +20,7 @@ arquivo = st.file_uploader("Faça upload do seu TCC em .docx", type="docx")
 if arquivo:
     try:
         doc = Document(arquivo)
-        st.success(f"Documento carregado: {len(doc.paragraphs)} parágrafos, {len(doc.tables)} tabelas, {len(doc.inline_shapes)} imagens")
+        st.success(f"Documento carregado: {len(doc.paragraphs)} parágrafos, {len(doc.tables)} tabelas")
     except Exception as e:
         st.error(f"Erro ao ler o arquivo: {e}")
         st.stop()
@@ -37,12 +37,11 @@ if arquivo:
                 section.page_width = Cm(21.0)
 
             # === 2. ESTILOS PERSONALIZADOS ===
-            def criar_estilo(nome, base_style=None, fonte=fonte_escolhida, tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.5):
+            def criar_estilo(nome, fonte=fonte_escolhida, tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.5):
                 if nome in doc.styles:
                     estilo = doc.styles[nome]
                 else:
                     estilo = doc.styles.add_style(nome, WD_STYLE_TYPE.PARAGRAPH)
-                estilo.base_style = base_style
                 estilo.font.name = fonte
                 estilo.font.size = Pt(tam)
                 estilo.font.bold = negrito
@@ -53,46 +52,52 @@ if arquivo:
                 estilo.paragraph_format.left_indent = Cm(0)
                 return estilo
 
-            # Estilo Normal (texto principal)
-            criar_estilo('ABNT_Normal', fonte=fonte_escolhida, tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.5)
-
-            # Títulos (Heading 1 a 5)
+            # Estilos
+            normal_style = criar_estilo('ABNT_Normal', fonte=fonte_escolhida, tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.5)
             for i in range(1, 6):
                 criar_estilo(f'ABNT_Heading_{i}', fonte=fonte_escolhida, tam=12, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.LEFT, espacamento=1.5)
-
-            # Citação longa
             citacao_style = criar_estilo('ABNT_Citacao', fonte=fonte_escolhida, tam=10, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, espacamento=1.0)
             citacao_style.paragraph_format.left_indent = Cm(4)
-
-            # Referências
             criar_estilo('ABNT_Referencia', fonte=fonte_escolhida, tam=12, negrito=False, alinhamento=WD_ALIGN_PARAGRAPH.LEFT, espacamento=1.0)
 
-            # === 3. REAPLICAR ESTILOS CONSERVADORAMENTE ===
+            # === 3. APLICAR ESTILOS + REMOVER NEGRITO DOS RUNS ===
             for para in doc.paragraphs:
-                texto = para.text.strip().upper()
+                texto = para.text.strip()
+                texto_upper = texto.upper()
 
-                # Títulos: Só se EXATAMENTE no formato ABNT (ex: "1 INTRODUÇÃO")
-                if re.match(r'^\d+(\.\d+)*\s+[A-ZÀ-Ú\s]+$', texto) and para.style.name.startswith('Heading') or len(texto) > 5:
-                    nivel = 1
-                    if '.' in texto.split(' ', 1)[0]:
-                        nivel = min(texto.split(' ', 1)[0].count('.') + 1, 5)
+                # Título
+                if re.match(r'^\d+(\.\d+)*\s+[A-ZÀ-Ú\s]+$', texto_upper):
+                    nivel = min(texto.split(' ', 1)[0].count('.') + 1, 5)
                     para.style = doc.styles[f'ABNT_Heading_{nivel}']
+                    # Títulos: manter negrito nos runs
+                    for run in para.runs:
+                        run.bold = True
 
-                # Citações longas: Só se já tiver recuo ou comprimento + aspas
-                elif (para.paragraph_format.left_indent is not None and para.paragraph_format.left_indent > Cm(1)) or (len(texto) > 120 and '"' in texto):
+                # Citação longa
+                elif (para.paragraph_format.left_indent is not None and para.paragraph_format.left_indent > Cm(1)) or (len(texto) > 120 and ('"' in texto or '“' in texto)):
                     para.style = doc.styles['ABNT_Citacao']
+                    for run in para.runs:
+                        run.bold = False
+                        run.font.size = Pt(10)
 
-                # Referências: Só se parecer com referência (autor maiúsculo, ano)
-                elif re.match(r'^[A-ZÀ-Ú]+, [A-ZÀ-Ú\.]+(\.|;)?', texto) or re.search(r'\d{4}\.', texto):
+                # Referência
+                elif re.match(r'^[A-ZÀ-Ú]+, [A-ZÀ-Ú\.]+\.?.* \d{4}\.', texto):
                     para.style = doc.styles['ABNT_Referencia']
+                    for run in para.runs:
+                        run.bold = False
 
-                # Texto normal: Aplicar só se não tiver estilo especial
-                elif not para.style.name.startswith('Heading') and not para.style.name.startswith('Quote'):
+                # Texto normal
+                else:
                     para.style = doc.styles['ABNT_Normal']
+                    # FORÇAR REMOÇÃO DE NEGRITO EM CADA RUN
+                    for run in para.runs:
+                        run.bold = False
+                        run.font.size = Pt(12)
+                        run.font.name = fonte_escolhida
 
-            # === 4. TABELAS E IMAGENS ===
+            # === 4. TABELAS ===
             for table in doc.tables:
-                table.alignment = 1  # Centro
+                table.alignment = 1
 
             # === 5. SALVAR ===
             buffer = io.BytesIO()
@@ -124,5 +129,5 @@ else:
     ### Dicas:
     - Use **.docx** (não PDF)
     - Converta em [ilovepdf.com](https://www.ilovepdf.com/pdf_to_word)
-    - O app **não altera conteúdo**, só ajusta formato!
+    - O app **remove negrito do texto normal** e **mantém nos títulos**
     """)
